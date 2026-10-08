@@ -1,72 +1,51 @@
-# Script transfer contract
+# 내장 브라우저 전송·재열람 계약
 
-`post-draft.mjs` is deterministic code. It does exactly what the tested agent
-mechanics did, but in seconds and without tokens:
+기본 전송은 Codex가 제공받은 내장 브라우저 API로 한다. 매번 현재 도구 문서를 확인한다. 아래 명칭은 2026-10-09 실측이며 UI가 달라지면 현재 DOM/접근성 트리에서 다시 찾는다. 숨은 앱 상태·페이지 내부 API·직접 DOM 변경으로 편집기를 우회하지 않는다.
 
-1. Login check from the persistent profile only (`NID_AUT` cookie). No
-   credential is ever read, asked, or stored; `login-setup.mjs` opens a window
-   for the human to log in once (로그인 상태 유지 + 2단계 인증 생략 권장,
-   지속은 약 2주이며 영구가 아니다).
-2. Editor entry via PostWriteForm URL. The autosave dialog is declined with
-   `취소` and the run continues — 취소 does not delete; the old draft stays in
-   the 임시저장 list.
-3. Title, then left alignment (the title's centering is inherited otherwise).
-4. **One single paste for the whole body.** Every paragraph, heading, blank
-   line, and table is built as one HTML string (explicit `font-size:15px`
-   paragraph spans, `font-size:19px;font-weight:700` headings, inline-styled
-   tables) and delivered through the real clipboard (`ClipboardItem` with
-   text/html) plus a real paste keystroke — a synthetic paste event looks
-   successful while the editor silently ignores it (measured). The paste is
-   never split: **a second paste after a component insertion corrupts the
-   document at save time** — every paragraph after the last heading of the
-   second paste turns fully bold and the tel line vanishes (measured,
-   reproduced, bisected). The script verifies the expected table count after
-   the paste; on failure the rows are typed as text lines.
-5. Photos and the map ride inside that single paste as placeholder paragraphs
-   (`@@IMG:n@@`, `@@MAP:n@@`). After the paste, the script clicks each
-   placeholder, clears the line, and inserts the component at that caret —
-   the component lands exactly at the placeholder position (measured).
-   Photos upload one at a time through the file chooser, `개별사진` chosen in
-   the layout dialog; captions go into the image caption box, best-effort.
-   The map search matches results by the **last** word of the anchor (a long
-   address filtered by its first word misses every result — measured) and
-   retries once with the last two words. Whatever happens, the place panel is
-   verified closed before moving on — a leftover open panel intercepts every
-   later click including 저장, silently voiding the save (measured). Map
-   failures are noted and the run continues. A leftover placeholder is
-   reported honestly in `pre_save_check.placeholder_leftover`.
-6. The phone line is typed and tel:-linked **right after the paste, before any
-   component insertion** — the text-link layer and the image-link layer are
-   the same layer, and once it has been used for an image it consumes a
-   selected text line instead of linking it (measured; the line literally
-   vanishes). Hard-won rules, all measured:
-   - Click only `button[data-name="text-link"]`. A name-based fallback like
-     /링크 입력/ also matches the image-link button ("링크 입력 열기").
-   - Wait ~0.9s after Shift+Home for the property toolbar, and ~1.2s after
-     apply for the binding. **Press no key between apply and the check** —
-     an early End/Enter cancels the pending link binding.
-   - Verify with a node count that excludes image components; report the
-     truth in `pre_save_check.tel_link_attached`. If the line vanished during
-     the attempt, retype it as plain text (number visible > number linked).
-   With this sequence the link survives save and reload — the earlier
-   "normalizer strips tel:" observation was a side effect of the two-paste
-   corruption.
-   The CTA banner image also gets the same `tel:` link through the image
-   property toolbar (`data-name="image-link"`, applied during component
-   insertion) — measured: the layer accepts the tel: scheme and the link
-   survives save and reload, so a tap on the banner dials the number after
-   publish. Reported in `pre_save_check.cta_tel_link_attached`.
-7. A deterministic pre-save check (image/table/map counts, body completeness,
-   placeholder sweep, no publish dialog), then click only `저장`(임시저장).
-   The publish button is never targeted by any selector in this script.
-8. Success requires a real signal: the saved toast or a draft-count change.
-    Otherwise the result is UNVERIFIED, honestly.
+## 입력 전
 
-Never run this script with `--headless`. The single paste needs a real
-focused window for the clipboard keystroke, and Naver blocks headless
-browsers (measured 429 on fin.land, silent breakage risk in the editor).
-The flag exists only for debugging by a human who accepts a broken result.
+1. workflow.mjs begin을 통과하고 대상 blog_id와 resume_draft_identity를 확인한다.
+2. 내장 브라우저의 작업 탭에서 대상 블로그를 열고 관측된 글쓰기 링크로 진입한다.
+3. 로그인 화면이면 사용자에게 직접 로그인을 요청한다. 기존 browser-profile의 로그인 파일을 복사하지 않는다. 로그인 실패/만료는 BLOCKED, 원고·이미지는 보존한다.
+4. 기존 자동복구 안내가 있으면 다른 사용 글을 덮어쓰지 않는다. 불명확하면 내용을 확인하고 작업 중단 지점을 보고한다.
+5. 이전 시도가 있으면 임시저장 목록을 먼저 확인한다. 새 글로 재시도하기 전에 reconcile이 필요하다.
 
-All UI selectors live in `config/selectors.yaml`. When Naver changes the
-editor, update that file only. While it is broken, the fast skill's
-agent-driven transfer remains the fallback path.
+## 본문·표·연락처
+
+- 검증된 로컬 transfer.html을 한 번 붙여넣는다. 제목은 manifest.title을 별도 입력한다. 텍스트를 전송 중 새로 쓰지 않는다.
+- 제공되는 tab.clipboard.write의 text/html(필요하면 text/plain 함께)과 지원되는 입력 API로 붙여넣는다. native clipboard나 navigator.clipboard를 직접 호출할 필요가 없다.
+- 네이버는 본문 입력용 iframe을 사용한다. DOM에 보이는 제목/본문 문단을 클릭해 초점을 잡고 도구의 입력/붙여넣기 API를 사용한다. contenteditable을 추측해 fill하지 않는다.
+- 붙여넣기는 비동기 처리된다. 직후 스냅샷이 빈 본문이라고 해서 즉시 재붙여넣지 않는다. 본문 텍스트와 표의 등장을 관측한 다음 결정한다.
+- 표는 실제 편집기 table과 셀 값으로 확인한다. 단순한 파이프 문자 나열이면 통과시키지 않는다.
+- 본문·소제목·표 안의 글·사진 설명·CTA·연락처를 모두 가운데 정렬한다. transfer.html의 정렬이 붙여넣기에서 유지됐는지 실제 편집기 문단 속성과 화면으로 확인한다. 유지되지 않으면 관측된 편집기 정렬 기능으로 적용한다. 제목도 편집기가 지원하면 가운데 정렬한다.
+- 한 문장당 한 문단과 문장 사이 빈 줄 한 줄을 확인한다. CSS 여백만 있는 상태를 빈 줄로 판정하지 않는다. 자리 교체 후 간격이 사라지거나 중복되면 빈 문단을 조정한다.
+- 전화 링크는 일반 a[href]뿐 아니라 편집기 DOM의 span.se-link[data-href]도 확인한다. 2026-10-09 실측: tel: 문자열은 이 data-href에 보관됐다. a 태그가 없다는 이유만으로 링크가 제거됐다고 판정하지 않는다.
+- 링크가 없거나 다르면, 연락처 줄을 선택하고 '링크 입력 열기' → 'URL을 입력하세요.' → 정확한 tel:번호 → '링크 입력'으로 적용한다. apply 후 실제 DOM 속성을 다시 읽는다. 링크가 있는지 보기 위해 전화를 걸지 않는다.
+- 숫자 문자열이 있어도 링크를 확인 못 하면 contact=unknown. 배너에 인쇄된 번호와 현재 프로필도 별도로 대조한다.
+
+## 사진·지도 자리 교체
+
+HTML의 @@IMG:n@@와 @@MAP:n@@가 manifest의 순서에 대응한다.
+
+- 자리 문단을 정확히 선택·제거한 위치에 컴포넌트를 넣는다. Home/Shift+End는 화면 줄 단위일 수 있으므로 삭제 후 마커가 완전히 사라졌는지 확인한다.
+- 사진은 API의 filechooser 대기를 먼저 시작하고 '사진 추가'를 누른다. chooser.setFiles에 manifest의 절대 파일 경로를 전달한다. 여러 장 선택 UI가 나오면 의도한 개별 사진 배치를 선택한다.
+- 이미지 컴포넌트가 나타나는 것뿐 아니라 업로드 완료·실제 로드·개수·순서·캡션을 확인한다. 사진 라이브러리의 삭제 버튼은 사용하지 않는다.
+- 지도는 '장소 추가' → 검색어 입력 → 실제 검색 결과의 이름/주소 확인 → 해당 결과 선택 → '추가' → '확인'. 첫 결과나 가장 긴 검색 단어의 포함만으로 선택하지 않는다.
+- 일치하는 장소를 못 찾으면 임의 장소를 넣지 않는다. 원고에 실패 이유를 기록하고 map 검사를 실패/확인 불가로 남긴다.
+- CTA 배너도 이미지 업로드 후 글자가 현재 프로필과 일치하는지 확인한다. 배너 링크를 지원하면 등록된 연락처 링크를 적용하고 검사한다. 텍스트 전화 링크는 항상 별도로 남긴다.
+- 업로드 실패 시 동일 컴포넌트 상태부터 확인한다. 본문을 통째로 다시 붙여넣거나 다른 전송기로 전환하지 않는다.
+
+## 저장·재열람
+
+1. title/모든 문단/이미지/표/지도/연락처/남은 마커를 로컬 원고와 비교한다. 누락된 부분을 원고에서 수정하면 prepare부터 다시 검증한다.
+2. 저장 버튼만 사용한다. 현재 명칭은 '저장'이다. 저장 전후 목록 개수·저장 시각·토스트를 기록한다. '자동저장' 표시만으로 임시저장 목록에 들어갔다고 단정하지 않는다.
+3. 임시저장 목록에서 이번 글을 유일하게 식별한다. 같은 제목이 여러 개면 시각/가시적 ID로 구분하고 모호하면 저장 확인 불가로 보고한다.
+4. **현재 편집 중인 문서를 클릭하는 것은 재열람 검수가 아니다.** 새 작업 탭의 글쓰기 → 임시저장 목록 → 식별한 같은 글을 열어 확인한다. 새 탭에서 빈 글을 입력하거나 저장하지 않는다.
+5. 원고 제목·본문 모든 문단·표 각 셀·사진 로드/순서·지도 이름/주소·연락처 텍스트/링크를 비교한다. 가운데 정렬과 문장 사이 빈 줄 한 줄도 재검수하고 body 검사 근거에 기록한다. 지도 썸네일을 매물 사진 수에 합산하지 않는다.
+6. 관측과 스크린샷을 남기고 workflow.mjs record 실행. 검수된 탭을 결과로 남긴다. 공개 발행하지 않는다.
+
+실제 브라우저를 강제 로그아웃하거나 네트워크 차단해 실패를 만들지 않는다. 장애 대응은 상태 전이 테스트로 검증하고, 실제 장애가 발생하면 관측된 지점부터 기록한다. 내장 브라우저 접근 자체가 불가능해도 로컬 준비 결과는 전달한다.
+
+## 이전 전송기
+
+post-draft.mjs / login-setup.mjs / selectors.yaml은 이전 Playwright 경로로 보존한다. 새 스킬에서 자동 호출하거나 대체 경로로 실행하지 않는다. 기존 사용자 명령을 명시적으로 다룰 때만 별도로 설명한다. fetch-listing.mjs의 수집용 Playwright는 유지한다.

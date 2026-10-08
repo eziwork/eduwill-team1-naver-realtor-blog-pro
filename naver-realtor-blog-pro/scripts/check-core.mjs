@@ -64,7 +64,7 @@ const CORE = [
       {re: /never ask for an ID|Never request credentials/i, why: "아이디·비밀번호를 묻지 말라는 규칙이 사라졌습니다"},
       {re: /never a tab the user opened|task-owned tab/i, why: "사용자가 열어둔 탭을 건드리지 말라는 규칙이 사라졌습니다"},
       {re: /Never publish/i, why: "발행 금지 규칙이 사라졌습니다"},
-      {re: /Click only `임시저장`/, why: "임시저장만 누른다는 규칙이 사라졌습니다"}
+      {re: /저장 버튼만 사용/, why: "임시저장만 누른다는 규칙이 사라졌습니다"}
     ],
     forbid: [
       {re: /public_publish\s*:\s*true/i, why: "공개 발행을 참으로 설정하는 문구가 있습니다"},
@@ -89,11 +89,13 @@ const CORE = [
     forbid: []
   },
   {
-    id: "6-무중단완주",
-    label: "사람만 할 수 있는 일이 아니면 멈추지 않는다",
+    id: "6-전략확정",
+    label: "전략 확정 전 원고 작성과 전송을 차단한다",
     need: [
-      {re: /Uninterrupted cycle|무중단 완주/i, why: "무중단 완주 규칙이 사라졌습니다"},
-      {re: /without pausing to ask|묻지 않고 (끝까지|계속)/i, why: "중간에 묻지 않는다는 규칙이 사라졌습니다"}
+      {re: /확정 응답을 받기 전에는 최종 원고 작성/, why: "전략 확정 절차가 없습니다"},
+      {re: /check-approved/, why: "확정 상태 검증 명령이 없습니다"},
+      {re: /내장 브라우저/, why: "기본 브라우저 전송 방식이 없습니다"},
+      {re: /재열람/, why: "저장본 재열람 검수가 없습니다"}
     ],
     forbid: []
   },

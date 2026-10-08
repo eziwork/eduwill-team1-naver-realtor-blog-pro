@@ -15,7 +15,7 @@
 - Digits-only input (6+ digits) → articleNo로 취급하고
   `node scripts/fetch-listing.mjs --article <no> --out <run-dir> --photos` 실행.
 - **URL 입력 분기**:
-  - `fin.land.naver.com/articles/{번호}` 형태 → `--url`로 그대로 전달 (번호 추출됨).
+  - `fin.land.naver.com/articles/{번호}` 형태 → 번호를 추출해 `--article`로 전달한다. 저장소 수집기는 `--url`도 지원하지만 이전 로컬 수집기와의 호환을 위해 번호 경로를 우선한다.
   - `fin.land.naver.com/map?...` 지도 공유 URL → **번호가 들어있지 않다(실측)**.
     스크립트가 `map_url_has_no_article_number`로 거절하니, 사용자에게 매물
     상세 페이지 URL 또는 '기본 정보' 표 하단의 매물번호를 한 번 요청한다.
@@ -41,3 +41,19 @@
   run continues.
 - No ownership verification is performed by design; the user is responsible
   for using their own listing number.
+
+## v0.2 정규화와 이전 설치본
+
+수집 원본 listing.json은 유지하고, 확인된 값만 별도 facts.json으로 정리한다.
+article_match=false 또는 원문 매물번호가 요청 번호와 다르면 해당 자료로 글을 만들지 않는다.
+
+이전 로컬 수집기는 다른 JSON 형태(api_payloads/page_text, gallery_complete,
+gallery_expected_count/gallery_discovered_count/gallery_photos_saved, photo_manifest,
+photo_download_failures)를 사용할 수 있다. 실제 JSON을 읽고 필드 경로와 원문 발췌를
+출처로 남긴다. schema 3.0의 facts.basic_info가 있다고 가정하지 않는다.
+
+사진은 expected/downloaded/failed 또는 이전 형식의 expected/discovered/saved를 대조한다.
+누락이면 한 번 재수집한다. 그래도 누락이면 확보한 자료를 보관하고 누락 목록을 보고한다.
+사용자에게 사진 보완 또는 확보분 사용 여부를 묻고, 답 없이 누락을 숨긴 완성본을 만들지 않는다.
+gallery_complete가 null이면 전수 수집으로 단정하지 않는다. 사용자가 제외를 선택한 사진은
+excluded_photos에 이유를 남긴다.

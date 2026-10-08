@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {pathToFileURL} from "node:url";
 
 function argsOf(argv) {
   const out = {};
@@ -50,7 +51,7 @@ function parseValue(raw) {
 }
 
 // Reads the flat two-level shape this profile uses. Not a general YAML parser.
-function readProfile(file) {
+export function readProfile(file) {
   const text = fs.readFileSync(file, "utf8");
   const data = {};
   let section = null;
@@ -78,6 +79,7 @@ const TEMPLATE = `schema_version: "1.0"
 # 사무소 정보입니다. 한 번만 적어두면 다음 글부터 다시 묻지 않습니다.
 # 공개해도 되는 정보만 적으세요. 비워두면 글에 쓰지 않습니다.
 office:
+  blog_id: null              # 대상 네이버 블로그 ID
   display_name: null          # 예: "성수한강공인중개사사무소"
   realtor_display_name: null  # 예: "박성수"
   public_contact: null        # 공개 가능한 연락처만
@@ -92,10 +94,11 @@ specialties:
 prohibited:
   claims: ["최저가", "무조건", "확정 수익", "100%"]
 
-# 정밀 버전($naver-realtor-blog)은 이 파일에 글 스타일과 문체 학습 설정을
-# 더 추가합니다. 같은 파일을 함께 씁니다.
+# 블로그별 문체는 같은 폴더의 blog-styles.json에 추가 저장합니다.
+# 기존 office/specialties/prohibited 및 사용자 추가 필드는 유지합니다.
 `;
 
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
 const args = argsOf(process.argv.slice(2));
 const file = path.resolve(
   args.path ? String(args.path)
@@ -137,4 +140,5 @@ if (args.init) {
     prohibited_claims: Array.isArray(prohibited.claims) ? prohibited.claims : [],
     office_filled: filled.length > 0
   }, null, 2) + "\n");
+}
 }

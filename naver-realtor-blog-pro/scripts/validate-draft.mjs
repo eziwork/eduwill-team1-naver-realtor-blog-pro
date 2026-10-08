@@ -31,15 +31,10 @@ if (/(검색량|상위\s*노출).{0,12}(높|보장|확실)/i.test(text)) {
 
 // 지도는 매물 위치를 실제로 보여주는 것이 목적이므로 주소를 막지 않는다.
 // 다만 호수는 매물 홍보에 필요 없으므로 기본적으로 뺀다.
-const hasLocationSection = /^##\s*위치\s*$/m.test(text);
 const mapAnchor = text.match(/^\s*지도\s*:\s*(.+)$/m);
-if (!hasLocationSection) {
-  warnings.push("no `## 위치` section; the post ends without a map anchor");
-} else if (!mapAnchor) {
-  errors.push("`## 위치` section has no `지도: <지도에 표시할 위치>` line");
-} else if (!mapAnchor[1].trim()) {
+if (mapAnchor && !mapAnchor[1].trim()) {
   errors.push("`지도:` line is empty");
-} else if (/\d+\s*호(?![가-힣])/.test(mapAnchor[1])) {
+} else if (mapAnchor && /\d+\s*호(?![가-힣])/.test(mapAnchor[1])) {
   warnings.push("`지도:` anchor includes a unit number; drop it unless the user asked to publish it");
 }
 
@@ -74,14 +69,14 @@ for (let i = 0; i < lines.length; i += 1) {
   const line = lines[i];
   if (!isProse(line)) continue;
 
-  const withoutDecimals = line.replace(/\*\*|==/g, "").replace(/\d+\.\d+/g, "0");
-  const endings = withoutDecimals.match(/[.!?](?=(?:[\"'”’)]*)?(?:\s|$))/g) || [];
-  if (endings.length > 1) errors.push(`line ${i + 1} contains more than one complete sentence`);
-  if ([...line.trim()].length > 100) errors.push(`line ${i + 1} exceeds 100 characters`);
+  // Keep authored sentence boundaries; do not split decimals, dates, or URLs automatically.
+  if ([...line.trim()].length > 120) warnings.push(`line ${i + 1} is long; shorten the sentence for mobile reading`);
+  if (/[.!?。！？]\s+[가-힣A-Za-z]/.test(line)) warnings.push(`line ${i + 1}: put each sentence in a separate paragraph with one blank line between sentences`);
+  if (/확인할 수 있습니다|살펴볼 수 있습니다|보입니다|표시됩니다|등록\s*사진|인계\s*품목/.test(line)) warnings.push(`line ${i + 1}: review passive or difficult wording; explain confirmed facts directly in familiar words`);
 
   const next = lines[i + 1];
   if (next !== undefined && next.trim() && isProse(next)) {
-    errors.push(`line ${i + 1} needs one blank line before the next prose sentence`);
+    warnings.push(`line ${i + 1}: confirm the intended paragraph boundary`);
   }
 }
 

@@ -1,216 +1,76 @@
 ---
 name: naver-realtor-blog-pro
-description: "Use when a Korean realtor wants a Naver Blog listing post produced end-to-end with the least typing: accept either a Naver 부동산 매물번호(articleNo) or natural-language facts, generate a thumbnail and a phone-CTA banner, write a table-formatted mobile/PC-readable draft, and save it as a Naver draft through a deterministic script transfer. Trigger on ‘매물번호 XXXX로 블로그 글 올려줘’, ‘이 매물 블로그 글 만들어서 임시저장까지’, or any fast-skill request that also asks for 썸네일/전화 배너/표. No keyword research or reports; see naver-realtor-blog for that."
+description: "공인중개사의 매물번호·링크·설명·사진으로 고객과 검색 의도에 맞는 전략 한 안을 추천하고, 사용자 확정 후 블로그 문체를 적용해 네이버 글을 내장 브라우저로 입력·임시저장·재열람 검수한다. 매물 블로그 작성, 타겟별 홍보 글, 문의 전환 글 요청에 사용한다. 공개 발행과 순위 추적은 포함하지 않는다."
 ---
 
-# Naver realtor blog pro
+# 검색 의도와 문의 전환을 설계하는 매물 블로그
 
-The fast skill's frame with three slots filled in: listing-number input,
-generated images (thumbnail + phone CTA), and a script transfer that moves the
-locked draft into the Naver editor in seconds with zero tokens. Announce a
-one-line progress note at each stage.
+매물 한 건당 글 한 편. Codex가 분석·전략·문체·원고·화면 검수를 수행하고, 코드는 파일·출처 연결·전략 확정·전송 상태를 검증한다. 각 단계에서 짧게 진행 상황을 알린다.
 
-## Core contract — inherited from the frame, verified by check-core.mjs
+## 지켜야 할 계약
 
-1. **Fact integrity.** The user's statements and the fetched listing record are
-   the only fact sources. Never invent price, fees, area, floor, options,
-   move-in dates, visits, demand, or search volume. Omit unknown facts or mark
-   them 확인 필요; never guess. Web-fetched facts keep their source in the run.
-2. **Permission boundary.** Never ask for an ID, password, verification code,
-   cookie, or session file, and never store one — login happens once, by the
-   human, inside the transfer browser via `scripts/login-setup.mjs`. Work only in surfaces this
-   run created, never a tab the user opened. Never publish, schedule, or change
-   visibility. Click only `임시저장`. **Never click any 삭제 button anywhere
-   in the blog UI** — 임시저장 목록의 "전체 삭제"는 "선택 삭제"보다 먼저
-   놓여 있어 패턴 매칭 클릭 한 번이 저장글 전부를 지운다 (실사고, 휴지통
-   없음). Draft cleanup is the human's job, always. Never auto-accept a
-   browser confirm dialog either — dismiss is the only allowed response.
-3. **Single source.** The validated local draft is the only source the transfer
-   script reads. Never rewrite content during transfer; fix the file,
-   revalidate, rerun.
-4. **Machine-checked format.** Run `scripts/validate-draft.mjs` before transfer;
-   the transfer itself is deterministic code (`scripts/post-draft.mjs`), not
-   model judgment.
-5. **Honest ending.** Report exactly one of `SAVED`, `BLOCKED`, `UNVERIFIED`,
-   `FAILED`, taken from the script's JSON. Never claim success without a real
-   confirmation signal, and always preserve the local draft when a later step
-   fails.
-6. **Uninterrupted cycle.** Run start to finish without pausing to ask. Stop
-   only for a login the user alone can complete or a missing material fact.
-   A failed thumbnail, CTA, map, or one photo is noted in one line and the run
-   continues. Never end a run waiting for an answer the run could decide.
+- **사실과 가설 분리.** 가격·면적·거리·시설·이용 가능·수익·방문 경험을 절대 지어내지 않는다. 확인 필요 항목은 원고 작성 전에 스킬 사용자에게 Codex 질문으로 확인하고, 답이 없으면 그 항목을 고객용 글에서 제외한다. '모른다·미확인·확인 필요·정보가 서로 다르다'는 수집 상태를 본문·표·캡션·이미지·CTA에 적지 않는다. 내부 사실·전략·검수 기록에는 누락과 충돌을 보존한다. 사진은 보이는 구조의 근거이며 면적·층고·법적 용도·거리의 근거가 아니다.
+- **전략 확인.** 사용자에게 추천 전략 한 안을 보여주고 실제 확정 응답을 받기 전에는 최종 원고 작성·이미지 제작·네이버 입력을 시작하지 않는다. 추천 제목의 방향과 개요까지는 제안할 수 있다. 매물의 핵심 조건 또는 타겟 변경은 재확인한다. 문체만 수정하면 기존 확정을 유지한다.
+- **검색어는 추천 후보.** 기본은 실시간 검색 조사 없는 추론이다. 검색량·순위·경쟁도를 만들지 않고 키워드 반복 횟수를 목표로 삼지 않는다.
+- **원본과 권한.** 검증된 로컬 원고가 only browser-writing source다. Do not rewrite during transfer. 수정은 로컬 파일부터 한다. Never request credentials. 로그인은 사용자가 내장 브라우저에서 한다. 전용 브라우저의 쿠키·로그인 파일을 복사하지 않는다. task-owned tab 또는 사용자가 지정한 작업 탭을 쓴다.
+- **임시저장만.** Never publish. 예약 발행·공개 범위 변경·기존 글 삭제도 하지 않는다. 저장 버튼만 사용한다(현재 UI 명칭 `저장`, 임시저장 동작). 기존 사용자 임시저장 글을 덮어쓰지 않는다.
+- **정직한 검수.** 저장 상태 `SAVED / BLOCKED / UNVERIFIED / FAILED`와 완성도 `완료 / 보완 필요 / 확인 불가`를 따로 보고한다. 저장 신호만으로 완료라고 하지 않는다. 실패해도 로컬 원고·사진을 보존한다.
 
-## Stage 0 — profile and input branch
+## 1. 입력·프로필·매물 분석
 
-Read the shared profile first (`scripts/profile.mjs`; office name, realtor
-name, phone, prohibited claims). Missing profile never blocks a run.
+1. `node scripts/profile.mjs`로 기존 사무소 프로필을 읽는다. 기본 위치는 `~/.codex/naver-realtor-blog/profile.yaml`. 기존 필드와 사용자 추가 설정을 유지하고 새로 제공된 사무소 정보만 갱신한다. 기본 CTA는 등록된 `office.public_contact`의 전화 상담이다. 없으면 필요한 정보와 함께 질문한다.
+   프로필의 prohibited.claims에 등록된 금지 표현을 전략·이미지·최종 원고에 적용한다.
+2. `node scripts/init-run.mjs --slug <매물명>`으로 새 작업 폴더를 만든다. 중단 작업이면 새로 만들지 말고 `workflow.mjs status --run <경로>`를 읽는다.
+3. 번호·링크 입력은 [input-listing.md](references/input-listing.md)를 따른다. 자연어와 사진도 그대로 받는다. 원문·수집 결과는 보관하고 덮어쓰지 않는다.
+4. 사진을 실제로 열어 분류한다. 사진 누락·실패·제외 사유를 기록한다. 사실은 `facts.json`으로 정규화하며 원문 위치와 발췌를 연결한다. 아파트·빌라·오피스텔·주택·상가·사무실·창고·공장·토지를 구분한다.
+5. [strategy-guide.md](references/strategy-guide.md)를 읽고 원고에 필요한 누락·충돌을 작성 전에 한 번에 묶어 `request_user_input_async` 등 현재 Codex 질문 도구로 사용자에게 묻는다. 전략 승인 질문에 미확인 목록을 붙이는 것만으로 사실 확인을 대신하지 않는다. 미응답 항목은 원고에서 제외하며, 그 항목을 모른다는 설명도 넣지 않는다. 유형·거래 자체가 불명확하면 그 부분부터 확인한다.
+6. [workflow-contract.md](references/workflow-contract.md)의 형식으로 `workflow.mjs facts --run <경로> --file <facts.json>`을 실행한다.
 
-When the user supplies office facts the profile lacks (사무소명, 중개사명,
-상담 전화, **네이버 블로그 아이디**), **edit
-`~/.codex/naver-realtor-blog/profile.yaml` now** and fill those fields
-(blog id goes under `office.blog_id` — add the key if absent), so later
-runs stop asking. Say so in one line. Do not touch fields this skill does
-not use. The transfer step reads `office.blog_id` when the user did not
-name a blog in this run.
+## 2. 추천 전략 한 안 → 사용자 확정
 
-**When BOTH the profile and the user's message lack the office facts, ask —
-do not silently skip.** A listing post exists to make the phone ring; the
-contact path is a material fact (measured: the first live run shipped a
-draft with no contact anywhere). Fold it into the **single consolidated
-Stage 0 question**, before any long work starts: 사무소명·중개사 성함·상담
-전화·블로그 아이디 (+ any missing material listing facts) in one message, with a note
-that answering once means never being asked again. If the user says 없이
-해줘, proceed and note the omission in one line. Never pause for this again
-mid-run.
+`strategy.json`을 작성하고 `workflow.mjs propose --run <경로> --file <strategy.json>`으로 검증한다. 다음 여덟 행으로 사용자에게 보여준다.
 
-Branch on the input:
+| 항목 | 내용 |
+|---|---|
+| 매물 해석 | 유형·거래 방식·확인된 핵심 조건 |
+| 주 타겟 | 이용 목적·우선 조건·선정 근거, 추론임을 구분 |
+| 검색 의도 | 검색으로 해결하려는 구체적인 질문 |
+| 검색어 후보 | **추천 후보**인 중심 표현 1개 + 관련 표현 2~4개 |
+| 후킹 | 확인된 조건이 타겟에게 주는 가치 |
+| 콘텐츠 구성 | 제목 방향·도입·문단별 질문/근거/사진 |
+| 문의 유도 | 문의로 확인하거나 안내받을 내용 + 등록 연락 수단 |
+| 확인 사항 | 미확인·충돌 정보와 원고에서 제외할 주장 |
 
-- **매물번호** (digits, e.g. 2645188091): run
-  `node scripts/fetch-listing.mjs --article <no> --out <run-dir> --photos`,
-  then read `listing.json` as the fact set. The script collects **every
-  gallery photo** via the galleryImages API (measured), not just the cover
-  image — read the output's `photos: {expected, downloaded, failed}` counts
-  and report them as-is; a shortfall is never silently dropped. Read
-  [references/input-listing.md](references/input-listing.md) first.
-  네이버 매물번호는 보통 10자리다 — 6자리 미만이면 네이버 번호가 아니므로
-  묻지 말고 자연어 경로로 넘어가라 (다른 매물 사이트의 자체 번호일 수
-  있다 — 실측: 돼지부동산.com의 5자리 item 번호). 네이버 지도 공유
-  URL(`fin.land.naver.com/map?...`)에는 매물번호가 없다(실측) — 상세 페이지
-  URL이나 '기본 정보' 표 하단의 매물번호를 한 번만 요청하라.
-- **매물 페이지 URL** (네이버가 아닌 사이트 포함): 그 페이지를 열어
-  게시된 사실과 사진만 수집해 자연어 경로로 처리한다. 페이지에 없는 값은
-  지어내지 않는다 — 사실 무결성 규칙 그대로.
-- **Natural language**: intake exactly as the fast skill does — parse
-  everything supplied, one consolidated follow-up at most.
+사용자 수정은 반영해 다시 제안한다. 명확한 확정 응답을 받으면 해당 시점의 listing_hash, strategy_hash와 실제 응답을 `approval.json`에 기록하고 `workflow.mjs approve`를 실행한다. 실행 계획에 대한 과거 동의나 단순 침묵을 매물 전략의 확정으로 간주하지 않는다.
 
-Create the run folder with `scripts/init-run.mjs` either way.
+## 3. 문체 적용·콘텐츠 제작
 
-## Stage 1 — images
+`workflow.mjs check-approved --run <경로>`를 먼저 통과한다. 다음 순서를 바꾸지 않는다.
 
-Read [references/content-format.md](references/content-format.md) for exact
-specs. Use the Codex `$imagen` skill:
+1. `workflow.mjs style-get --blog <ID/URL>`로 해당 블로그의 저장 문체를 확인한다. 사용자가 직접 정한 말투·형식이 저장 문체나 기존 글 분석보다 우선한다.
+2. 없으면 기존 블로그 주소를 받는다(이미 주어진 주소는 재질문하지 않는다). 공개된 **매물 글 최대 5개**의 실제 본문을 읽고 문체를 추출한다.
+3. 기존 블로그가 없거나 본문을 못 읽으면 타겟에 맞는 기본 문체로 진행하고 이유를 남긴다. 한두 편만 읽었다면 표본 부족을 표시한다.
 
-- **Thumbnail** (every post): 1:1, listing name + office/realtor name from the
-  profile as visible text. Save to `<run-dir>/thumbnail.png`.
-- **CTA banner** (once, reused): if
-  `~/.codex/naver-realtor-blog/assets/cta-banner.png` is missing, generate it
-  with the office phone number rendered large, and save it there. Later runs
-  reuse the file.
+존댓말·문장 길이·문단 리듬·도입·소제목·전문용어 설명·강조·이모지·상담 표현을 저장한다. 글 주소·분석 시점·짧은 본문 근거를 보관한다. 기존 글의 매물 사실·경험·후기 문장을 새 글로 옮기지 않는다. 사용자가 변경을 요청할 때만 실제 요청문을 기록하고 저장 스타일을 갱신한다. 사용자 수정 사항과 충돌하는 과거 말투·리듬은 재사용하지 않는다.
 
-**Copy the images the draft will use into the run folder** (`thumbnail.png`,
-`cta-banner.png`) and reference them with those exact relative names. Before
-writing an image line into the draft, check the file actually exists; a
-reference to a file that was never generated is a silent lie the transfer
-script can only skip. If generation fails, omit that image line, print the
-exact generation prompt for the user, note the miss in one line, and continue —
-images never block the run, and the tel: text line still carries the phone
-number without the banner.
+**기본 말투와 네이버 배치:** 매물을 잘 이해한 중개사가 고객에게 편하게 설명하는 친숙한 존댓말을 쓴다. 쉬운 단어와 짧은 문장으로 직접 설명한다. 확인된 사실을 매번 '확인할 수 있습니다·보입니다·표시됩니다·등록사진'으로 돌려 말하지 않는다. 방문하지 않았다면 방문한 경험을 만들지 않는다. 본문은 한 문장당 한 paragraph 블록, 문장 사이 정확히 빈 줄 한 줄, 모든 문장은 가운데 정렬한다. 소제목·사진 설명·표 안의 글·상담 문구·연락처도 가운데 정렬한다. 자세한 예시와 예외는 [content-format.md](references/content-format.md)를 따른다.
 
-## Stage 2 — draft
+[content-format.md](references/content-format.md)에 따라 `post.json`과 사진·썸네일·상담 배너를 만든다. 제목부터 CTA까지 확정된 검색 의도를 일관되게 설명한다. 썸네일·배너 제작은 현재 환경에서 제공되는 이미지 제작 기능을 사용한다. 배너의 사무소명·연락처를 실제로 읽어 현재 프로필과 대조하고 바뀌면 새로 만든다.
 
-**Settle the photos before writing a word.** If the user gave per-photo
-labels, use them — the owner knows their property best. If photos arrived
-without labels, **look at them yourself**: open each image file with the
-image-viewing tool, and write one line per photo (which space + what is
-visible, e.g. `07.jpg — 내부: 층고 높은 철골 홀, 팔레트 보관`) into
-`<run-dir>/photo-labels.md` before drafting. A photo you cannot confidently
-place gets a conservative label (`내부 공간`) and the draft never asserts
-more than the label says — fact integrity applies to what you see, too.
-These labels are the input that decides the chapters and photo placement
-below; never write the draft first and guess photo positions after.
+`workflow.mjs prepare --run <경로> --file <post.json> --blog <ID>`가 원고·HTML·컴포넌트 목록을 생성한다. `node scripts/validate-draft.mjs --file <run>/blog-post.md`를 실행해 오류를 수정한다. 숫자·근거 연결 검사는 코드가 하고, 거리·수익·용도·사진 해석 등 의미가 근거에서 실제로 도출되는지는 Codex가 검수한다. 코드 통과만으로 사실 검수를 대체하지 않는다.
 
-**Default: use every photo the user handed over.** A folder given without
-instructions means "put these in the post" — listing posts earn trust with
-photos. Similar photos of the same space run **consecutively** after the
-sentence that describes that space (four exterior shots → four image lines
-in a row in the exterior chapter). Drop a photo only when it is effectively
-the same shot again or unusably blurred, and **report every exclusion with
-its reason**. Select a subset only when the user asked for it ("골라 써줘",
-"대표만"). If photo policy is genuinely ambiguous, fold one line into the
-single consolidated Stage 0 question — never a separate pause.
+## 4. 내장 브라우저 입력·임시저장·재열람
 
-Write `blog-post.md` on the fixed skeleton — 도입 → *(서술 챕터들)* → 위치 →
-핵심 조건 → 상담 안내 → 태그 — where the 2–4 서술 챕터 in the middle are
-**chosen to fit the listing**, not copied from a template. The photo space
-labels and the property type decide them: a 화장실 photo earns its chapter, a
-listing without a 현관 never gets one. See
-[references/content-format.md](references/content-format.md) for per-type
-starting sets. `핵심 조건` stays directly above `상담 안내`.
+[transfer-contract.md](references/transfer-contract.md)를 읽는다. `workflow.mjs begin --run <경로>` 통과 후 제공되는 내장 브라우저 API만으로 편집기에 입력한다. 본문 일괄 붙여넣기 → 전화 링크 → 사진·지도 자리 교체 → 저장 전 확인 → 저장 → **동일 임시저장 글 재열람** 순서다.
 
-Voice: read `style.preset` from the shared profile (담백형 기본, 친근형·정보형
-지원 — same presets as the naver-realtor-blog skill). Then:
+`scripts/post-draft.mjs`와 `scripts/login-setup.mjs`는 이전 전송기를 위한 보존 파일이다. 새 흐름에서 자동 실행하거나 내장 브라우저 실패 시 몰래 전환하지 않는다. 수집용 `fetch-listing.mjs`의 Playwright 사용은 별개다.
 
-- `핵심 조건` as a **2-column markdown table** (`| 항목 | 내용 |`), one verified
-  fact per row;
-- inline emphasis where it earns its place: `**bold**` for at most one key fact
-  per chapter, `==highlight==` for at most two phrases in the whole post; no
-  font colors by default;
-- thumbnail as the first image line, photos after the sentences that describe
-  the same space, CTA banner image as the last image line before tags;
-- `위치` chapter with `지도: <매물 주소 또는 건물명>` (unit number dropped).
+제목·본문 전체·사진별 순서·조건표 각 셀·지도 장소·전화번호/링크를 재열람해 검사한다. 관측 근거를 `verification-input.json`에 남기고 `workflow.mjs record`로 결과를 저장한다. 저장이 애매하거나 이전 시도가 있으면 먼저 임시저장 목록에서 제목·시각·식별자를 확인하고 `workflow.mjs reconcile`을 실행한다. 기존 글을 찾았으면 그 글에서 재개하며 새 글을 만들지 않는다.
 
-Then run `node scripts/validate-draft.mjs --file <run-dir>/blog-post.md`.
-If validation fails, fix once and rerun.
+최종 보고: 전략 요약, 저장 상태, 완성도, 임시저장 글의 제목/식별자, 원고·이미지 경로, 누락/실패/확인 불가 항목. 실제 검색 유입과 문의 증가는 발행 후 확인할 사업 성과로 구분한다.
 
-## Stage 3 — script transfer
+## 설치·유지보수
 
-Read [references/transfer-contract.md](references/transfer-contract.md), then:
+Node.js **20 이상**. 새 상태 관리·문체·원고 도구는 Node 내장 모듈만 사용한다. 매물번호 수집/이전 전송기에는 스킬 폴더에서 `npm ci`(동봉 lockfile 기준, Chromium 설치 포함)가 필요하다. 내장 브라우저에는 별도 Playwright 로그인 설정을 적용하지 않는다.
 
-```bash
-node scripts/post-draft.mjs --file <run-dir>/blog-post.md --blog <blogId> --tel <public phone>
-```
-
-`--tel` is not optional when the profile has `office.public_contact` — the
-phone line and its tel: link come only from this flag, never from the draft
-body. Omitting it ships a listing post with no contact path (measured).
-
-The script logs in from the persistent profile (never from credentials), pastes
-the whole body as one real-clipboard HTML paste (splitting the paste corrupts
-formatting — measured), inserts photos and the map at placeholder positions,
-applies the `tel:` link, runs a deterministic pre-save check, clicks only
-`임시저장`, and returns JSON.
-
-Interpret the JSON honestly:
-
-- `SAVED` — report the draft path and that publishing stays with the human.
-- `BLOCKED` + `login_required` — **run `node scripts/login-setup.mjs`
-  yourself**: it opens a browser window and waits (≤5 min) for the human to
-  log in. Tell the user in one line that the window is open and to log in
-  there (`로그인 상태 유지` 체크). The script exits on its own once login is
-  detected, restarts the same browser profile once, and returns `LOGGED_IN`
-  only when the login survives that restart. Never ask for or handle any
-  credential. If it returns `SESSION_NOT_PERSISTED`, reopen it and tell the
-  human to check `로그인 상태 유지`; otherwise rerun the transfer. The user
-  should not need to type any command.
-- `UNVERIFIED` — say the click happened but no reliable signal was seen.
-- `SETUP_REQUIRED` — the skill was installed without its parts (this happens
-  when someone installs with a short "스킬 설치해줘" request). **Fix it yourself,
-  do not ask the user**: run `npm install` in the repository root (the folder
-  with `package.json`) — its postinstall installs the chromium browser too —
-  then rerun the exact same command once. If only the browser is missing, run
-  `npx playwright install chromium` instead. Tell the user in one line that
-  first-time parts are being installed (a few minutes, one time only).
-- `FAILED` — follow the retry protocol below, in this order, before ending:
-  1. If the browser died at launch (log shows `Crashpad … Permission denied`
-     or the script never reached the editor), that is a sandbox permission
-     problem, not a draft problem. **Re-run the exact same headed command and
-     request execution approval** — an approved headed run works (measured).
-  2. **Never add `--headless`, under any circumstances.** The transfer is a
-     real-clipboard paste that breaks without a focused window, and Naver
-     blocks headless browsers (measured 429). A headless "success" would be
-     a false one.
-  3. If the approved headed retry also fails, paste the script's JSON output
-     **and the full stderr, verbatim and unedited**, into your report, keep
-     the local draft untouched, and end with `FAILED`. Do not summarize the
-     error in your own words instead of quoting it.
-  4. Only if the script itself is broken (e.g. selectors dead after a Naver
-     update): fall back to the fast skill's agent-driven transfer so the run
-     still ends, and note that `config/selectors.yaml` needs an update.
-
-Finish by returning the absolute draft path, the status, image results, and any
-excluded photos or unknown material facts. Always include the script's draft
-count evidence (`draft_count_before` → `after`) — that pair is the only proof
-the save was real. If the 임시저장 list already holds a draft with the same
-title (re-runs do this), say so and tell the user how to pick the new one:
-newest saved time, and in this skill's posts the one whose ending carries the
-CTA banner and the linked 전화 상담 line.
+수정 후 `node scripts/check-core.mjs`, 저장소 루트의 `npm test`, skill-creator의 `quick_validate.py`를 실행한다. 유형별 수동 검증 기준은 [evaluation-cases.md](references/evaluation-cases.md)를 따른다.
